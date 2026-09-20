@@ -85,6 +85,21 @@
     let fileId = null;
     let runId = null;
 
+    // 结果下拉的合法取值（与 <select> 选项保持一致；'all' 即「全部结果」）
+    const RESULT_VALUES = new Set(['all', 'ok', 'late', 'timeout', 'revised', 'paused', 'substituted']);
+
+    // 当前场次 + 筛选状态写回地址栏（replaceState，不产生历史记录）：
+    // file/run/position/result 始终与下拉一致，刷新页面 / 转发链接都能复现筛选状态；
+    // 任一下拉回到「全部」时对应参数从 URL 移除（列表恢复完整）。
+    function syncUrl() {
+      const q = new URLSearchParams();
+      q.set('file', fileId);
+      q.set('run', String(runId));
+      if (positionFilter.value !== 'all') q.set('position', positionFilter.value);
+      if (resultFilter.value !== 'all') q.set('result', resultFilter.value);
+      history.replaceState(null, '', `latency.html?${q.toString()}`);
+    }
+
     function refValue(s) { return `${s.fileId}/${s.runId}`; }
     function optionLabel(s) {
       return `${fmtClock(s.startedAt)} → ${fmtClock(s.finishedAt)} ｜ ${s.cueCount} 条口令 ｜ ${fmtDuration(s.durationMs)} ｜ ${s.fileId.slice(0, 8)}… #${s.runId + 1}`;
@@ -392,21 +407,28 @@
 
       positionFilter.innerHTML = '<option value="all">全部岗位</option>' +
         analysis.positions.map((p) => `<option value="${E(p)}">${E(p)}</option>`).join('');
+      // 筛选状态从地址栏深链参数恢复（页面刷新 / 重新加载 / 转发链接同一路径）：
+      // position 必须是本场实际存在的岗位，result 必须是结果下拉的合法取值；
+      // 缺失 / 非法参数回落到「全部」。只读 GET 接口与参数均不变，仅前端恢复 UI。
       const params = new URLSearchParams(location.search);
       const presetPos = params.get('position');
-      if (presetPos && analysis.positions.includes(presetPos)) positionFilter.value = presetPos;
-      else positionFilter.value = 'all';
+      positionFilter.value = (presetPos && analysis.positions.includes(presetPos)) ? presetPos : 'all';
+      const presetResult = params.get('result');
+      resultFilter.value = (presetResult && RESULT_VALUES.has(presetResult)) ? presetResult : 'all';
 
       filterBar.style.display = '';
       openReplay.href = replayHref(null);
       openReplay.style.display = '';
-      history.replaceState(null, '', `latency.html?file=${encodeURIComponent(f)}&run=${encodeURIComponent(r)}` +
-        (positionFilter.value !== 'all' ? `&position=${encodeURIComponent(positionFilter.value)}` : ''));
+      syncUrl();
       render();
     }
 
-    positionFilter.addEventListener('change', render);
-    resultFilter.addEventListener('change', render);
+    // 下拉变更后重渲染并把新筛选状态同步进地址栏（刷新后仍停留在该筛选；
+    // 切回「全部结果」时 result 参数移除，列表恢复完整口令列表）
+    positionFilter.addEventListener('change', () => { render(); syncUrl(); });
+    resultFilter.addEventListener('change', () => { render(); syncUrl(); });
+    // 切换场次时带上当前筛选参数作为新场次的预选；loadSession 会自行校验
+    // （岗位在新场次不存在时回落「全部」），并把最终生效的筛选写回地址栏
     sessionSelect.addEventListener('change', () => {
       if (sessionSelect.value) loadSession(sessionSelect.value);
     });

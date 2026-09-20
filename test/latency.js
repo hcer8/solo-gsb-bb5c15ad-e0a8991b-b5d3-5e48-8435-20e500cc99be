@@ -240,6 +240,13 @@ async function main() {
     page.body.includes('/api/replay/sessions') && page.body.includes('latency.js'));
   check('页面不创建 WebSocket、不加载 common.js 的 WS 封装',
     !/new\s+WebSocket\s*\(/.test(page.body) && !page.body.includes('common.js'));
+  // 结果筛选状态深链：页面从 ?result= 恢复结果下拉（刷新 / 重新加载后仍只显示匹配口令）
+  check('页面从 URL result 深链参数恢复结果筛选（RESULT_VALUES 白名单校验）',
+    /params\.get\(['"]result['"]\)/.test(page.body) && /RESULT_VALUES/.test(page.body));
+  check('筛选状态经 replaceState 写回地址栏（切回全部结果即移除参数恢复完整列表）',
+    /history\.replaceState/.test(page.body) && /function syncUrl/.test(page.body));
+  check('页面不含任何 POST/PUT/DELETE/PATCH 写请求',
+    !/method\s*:\s*['"](POST|PUT|DELETE|PATCH)/i.test(page.body));
   const js = await httpGet('/latency.js');
   check('GET /latency.js 200 且脚本内无 WebSocket / fetch 写方法',
     js.status === 200 && !/new\s+WebSocket\s*\(/.test(js.body) &&
