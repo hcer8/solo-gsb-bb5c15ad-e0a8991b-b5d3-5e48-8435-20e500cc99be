@@ -396,17 +396,27 @@
       const presetPos = params.get('position');
       if (presetPos && analysis.positions.includes(presetPos)) positionFilter.value = presetPos;
       else positionFilter.value = 'all';
+      // 结果筛选同样从深链恢复：刷新 / 重新加载后下拉恢复所选值，非法值回退「全部结果」
+      resultFilter.value = CueLatency.normalizeResultFilter(params.get('result'));
 
       filterBar.style.display = '';
       openReplay.href = replayHref(null);
       openReplay.style.display = '';
-      history.replaceState(null, '', `latency.html?file=${encodeURIComponent(f)}&run=${encodeURIComponent(r)}` +
-        (positionFilter.value !== 'all' ? `&position=${encodeURIComponent(positionFilter.value)}` : ''));
+      syncUrl();
       render();
     }
 
-    positionFilter.addEventListener('change', render);
-    resultFilter.addEventListener('change', render);
+    // 深链同步：场次与岗位 / 结果筛选都写回地址栏（replaceState，不新增历史记录），
+    // 刷新、重新加载或分享链接后恢复同一筛选视图；「全部」不写入参数以保持链接简洁
+    function syncUrl() {
+      const q = new URLSearchParams({ file: fileId, run: String(runId) });
+      if (positionFilter.value !== 'all') q.set('position', positionFilter.value);
+      if (resultFilter.value !== 'all') q.set('result', resultFilter.value);
+      history.replaceState(null, '', `latency.html?${q.toString()}`);
+    }
+
+    positionFilter.addEventListener('change', () => { syncUrl(); render(); });
+    resultFilter.addEventListener('change', () => { syncUrl(); render(); });
     sessionSelect.addEventListener('change', () => {
       if (sessionSelect.value) loadSession(sessionSelect.value);
     });

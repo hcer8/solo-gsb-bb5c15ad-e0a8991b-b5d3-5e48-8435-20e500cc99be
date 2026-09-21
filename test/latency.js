@@ -4,8 +4,9 @@
  *   三、瀑布行：按时 / 迟到（超时标记保留）/ 超时未确认 / 撤回时未确认
  *   四、替岗：确认计入接管岗位、超时标记随确认权移交
  *   五、暂停：deadline 顺延、有效等待扣除暂停、重复暂停 / 恢复
- *   六、汇总与筛选（按岗位、按结果）
- *   七、只读页面：HTTP GET 静态页、不创建 WebSocket、无新增服务端接口
+ *   六、汇总与筛选（按岗位、按结果；含结果筛选深链取值 normalizeResultFilter）
+ *   七、只读页面：HTTP GET 静态页、不创建 WebSocket、无新增服务端接口、
+ *      结果筛选状态经 file/run/position/result 深链恢复（刷新后保持）
  *
  * 运行前提：服务已在 localhost:3000 启动（npm start）。
  */
@@ -212,6 +213,22 @@ async function main() {
   check('timeout 筛选：最终轮结束时仍超时才命中（本场无）',
     a.cues.every((c) => !L.cueMatchesResult(c, 'timeout')));
 
+  console.log('五之二、结果筛选深链取值（刷新 / 重新加载后恢复所选结果）');
+  check('结果筛选取值表覆盖「全部」+ 六种结果',
+    JSON.stringify(L.RESULT_FILTER_VALUES) ===
+    JSON.stringify(['all', 'ok', 'late', 'timeout', 'revised', 'paused', 'substituted']));
+  check('normalizeResultFilter：合法深链值原样返回（含 substituted 替岗）',
+    L.normalizeResultFilter('substituted') === 'substituted' &&
+    L.normalizeResultFilter('ok') === 'ok' &&
+    L.normalizeResultFilter('all') === 'all');
+  check('normalizeResultFilter：缺省 / 非法值回退 all，多余空白裁剪',
+    L.normalizeResultFilter(null) === 'all' &&
+    L.normalizeResultFilter('') === 'all' &&
+    L.normalizeResultFilter('bogus') === 'all' &&
+    L.normalizeResultFilter(' substituted ') === 'substituted');
+  check('回退 all 后列表恢复完整（cueMatchesResult 对 all 恒真）',
+    a.cues.every((c) => L.cueMatchesResult(c, L.normalizeResultFilter(null))));
+
   console.log('六、健壮性：无事件 / 空载荷不崩溃');
   const empty = L.analyzeSession({ session: {}, timeoutSec: 10, events: [], sequence: [] });
   check('空场次：0 口令 0 轮次', empty.cues.length === 0 && empty.rounds.length === 0 &&
@@ -240,6 +257,27 @@ async function main() {
     page.body.includes('/api/replay/sessions') && page.body.includes('latency.js'));
   check('页面不创建 WebSocket、不加载 common.js 的 WS 封装',
     !/new\s+WebSocket\s*\(/.test(page.body) && !page.body.includes('common.js'));
+
+  console.log('七之二、结果筛选状态深链（刷新 / 重新加载后恢复）');
+  // 页面结果下拉选项必须与分析器取值表一致（顺序也一致），防止两侧漂移
+  const resultSelect = page.body.match(/<select id="resultFilter">([\s\S]*?)<\/select>/);
+  const optionValues = resultSelect
+    ? [...resultSelect[1].matchAll(/<option value="([^"]+)"/g)].map((x) => x[1])
+    : [];
+  check('页面结果下拉选项与分析器 RESULT_FILTER_VALUES 一致',
+    JSON.stringify(optionValues) === JSON.stringify(L.RESULT_FILTER_VALUES));
+  check('页面从 result 深链参数恢复结果筛选（非法值经 normalizeResultFilter 回退）',
+    page.body.includes("CueLatency.normalizeResultFilter(params.get('result'))"));
+  check('岗位 / 结果筛选变更时同步深链并重渲染（replaceState 写回 file/run/position/result）',
+    /positionFilter\.addEventListener\('change'[\s\S]{0,120}syncUrl\(\)/.test(page.body) &&
+    /resultFilter\.addEventListener\('change'[\s\S]{0,120}syncUrl\(\)/.test(page.body) &&
+    page.body.includes("q.set('position', positionFilter.value)") &&
+    page.body.includes("q.set('result', resultFilter.value)") &&
+    page.body.includes('history.replaceState'));
+  check('深链仍兼容既有参数（file / run / position 保留，result 为新增可选参数）',
+    page.body.includes("params.get('position')") &&
+    page.body.includes("params.get('file')") &&
+    page.body.includes("params.get('run')"));
   const js = await httpGet('/latency.js');
   check('GET /latency.js 200 且脚本内无 WebSocket / fetch 写方法',
     js.status === 200 && !/new\s+WebSocket\s*\(/.test(js.body) &&

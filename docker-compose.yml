@@ -10,4 +10,11 @@ services:
     volumes:
       # 挂载事件日志目录，容器重启后本场日志仍可查阅
       - ./data:/app/data
+    # 健康检查使用镜像内自带的 node（全局 fetch），无需额外工具
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/replay/sessions').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped

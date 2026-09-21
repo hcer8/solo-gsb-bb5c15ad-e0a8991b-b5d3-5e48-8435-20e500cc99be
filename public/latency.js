@@ -357,6 +357,17 @@ const CueLatency = (() => {
     return row.origin === position || row.position === position;
   }
 
+  // 结果筛选下拉的合法取值（与 latency.html 中 <select id="resultFilter"> 的选项
+  // 一一对应且顺序一致，测试会校验两侧同步）；深链恢复时非法值一律回退 'all'
+  const RESULT_FILTER_VALUES = ['all', 'ok', 'late', 'timeout', 'revised', 'paused', 'substituted'];
+
+  // 深链 result 参数归一化：仅接受 RESULT_FILTER_VALUES 中的取值，
+  // 缺省 / 非法值（含空串、null、多余空白）回退「全部结果」，保证刷新后下拉必有确定选中项
+  function normalizeResultFilter(value) {
+    const v = String(value == null ? '' : value).trim();
+    return RESULT_FILTER_VALUES.includes(v) ? v : 'all';
+  }
+
   // 结果筛选（口径在页面与测试中共用）：
   //   ok      —— 最终轮次全员按时确认
   //   late    —— 最终轮次存在迟到确认（也涵盖先超时后迟到）
@@ -383,12 +394,14 @@ const CueLatency = (() => {
     STATUS_LATE,
     STATUS_TIMEOUT,
     STATUS_PENDING,
+    RESULT_FILTER_VALUES,
     overlapMs,
     activeWaitMs,
     segmentsBetween,
     analyzeSession,
     rowMatchesPosition,
     cueMatchesResult,
+    normalizeResultFilter,
   };
 })();
 
